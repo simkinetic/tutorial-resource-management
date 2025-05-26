@@ -47,7 +47,7 @@ local DynamicStack = terralib.memoize(function(T, copyable)
     -- Free heap memory and reset state
     terra Stack:__dtor()
         if self.data~=nil then
-            utils.printf("Deleting stack.\n")
+            utils.printf("Deleting DynamicStack.\n")
             C.free(self.data)
             self.data = nil
         end
@@ -58,6 +58,7 @@ local DynamicStack = terralib.memoize(function(T, copyable)
     if copyable then
         --deepcopy of Stack data structure
         terra Stack.methods.__copy(from : &Stack, to : &Stack)
+            utils.printf("Copying DynamicStack.\n")
             to:__dtor() --delete old memory, just in case
             to.data = [&T](C.malloc(from.capacity * sizeof(T))) --allocate new memory
             C.memcpy(to.data, from.data, from.size * sizeof(T)) --copy data over
@@ -73,7 +74,7 @@ local DynamicStack = terralib.memoize(function(T, copyable)
 
     -- Reallocate when capacity is exceeded
     terra Stack:realloc(capacity : int)
-        utils.printf("Reallocating stack memory.\n")
+        utils.printf("Reallocating DynamicStack.\n")
         self.data = [&T](C.realloc(self.data, capacity * sizeof(T)))
         self.capacity = capacity
     end
@@ -125,7 +126,7 @@ local DynamicVector = terralib.memoize(function(T, copyable)
     -- Free heap memory and reset
     terra Vector:__dtor()
         if self.data~=nil then
-            utils.printf("Deleting vector.\n")
+            utils.printf("Deleting DynamicVector.\n")
             C.free(self.data)
             self.data = nil
             self.size = 0
@@ -137,6 +138,7 @@ local DynamicVector = terralib.memoize(function(T, copyable)
     if copyable then
         --deepcopy of Vector data structure
         terra Vector.methods.__copy(from : &Vector, to : &Vector)
+            utils.printf("Copying DynamicVector.\n")
             to:__dtor() --delete old memory, just in case
             to.data = [&T](C.malloc(from.size * sizeof(T))) --allocate new memory
             C.memcpy(to.data, from.data, from.size * sizeof(T)) --copy data over
@@ -195,10 +197,12 @@ local VectorPair = terralib.memoize(function(T, options)
         return self.methods[methodname] or Pair.staticmethods[methodname]
     end
 
-    -- Create a new `DynamicVectorPair`. Note that the function arguments are passed by value. Since `Vector` does not implement `__copy`, the function argumens will be moved from by default. 
+    -- Create a new `DynamicVectorPair`. Note that the function arguments are passed by value. 
+    -- If `Vector` implement `__copy`, the function argumens will be copied and otherwise moved.
+    -- Note how the `__move__` directive avoids potential copies.
     Pair.staticmethods.new = terra(first : Vector, second : Vector)
         utils.assert(first:size() == second:size(), "Error: sizes are not compatible.")
-        return Pair{first=first, second=second}
+        return Pair{first=__move__(first), second=__move__(second)}
     end
 
     -- Macro for get/set access: dualvector(i)
