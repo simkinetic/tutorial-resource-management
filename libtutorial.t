@@ -202,7 +202,9 @@ local VectorPair = terralib.memoize(function(T, options)
     -- Note how the `__move__` directive avoids potential copies.
     Pair.staticmethods.new = terra(first : Vector, second : Vector)
         utils.assert(first:size() == second:size(), "Error: sizes are not compatible.")
+        -- pair_new_start
         return Pair{first=__move__(first), second=__move__(second)}
+        -- pair_new_end
     end
 
     -- Macro for get/set access: dualvector(i)
