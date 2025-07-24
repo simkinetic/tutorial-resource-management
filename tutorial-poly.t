@@ -19,9 +19,10 @@ local Polynomial = terralib.memoize(function(T, N)
     assert(type(N) == "number" and N>0 and N%1==0, "CompileError: expected a positive integer.")
 
     --typedef fused-multiply-add function from math.h library
-    local fusedmuladd = T == float and C.fmaf or C.fma
+    --local axpy = macro(function(a,x,b) return `a*x+b end)
+    local axpy = terralib.intrinsic(T == float and "llvm.fma.f32" or "llvm.fma.f64", {T, T, T} -> T)
 
-    --define struct
+    --define struct type
     local struct poly{
         coeffs : T[N]
     }
@@ -32,7 +33,7 @@ local Polynomial = terralib.memoize(function(T, N)
         escape
             for i=N-2,0,-1 do
                 emit quote
-                    y = fusedmuladd(x, y, self.coeffs[i])
+                    y = axpy(x, y, self.coeffs[i])
                 end
             end
         end
@@ -56,7 +57,7 @@ testenv "Static polynomial" do
     for _,T in pairs{float,double} do
 
         local poly = Polynomial(T, 4)
-
+        poly.methods.eval:disas()
         testset(T) "polynomial evaluation using Horner's method" do
             terracode
                 var p = poly{arrayof(T,-1.,2.,-6.,2.)}
