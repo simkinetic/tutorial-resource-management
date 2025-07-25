@@ -5,10 +5,6 @@
 --
 -- SPDX-License-Identifier: MIT
 
---poly_start
---import 'math.h' library functions needed for fused-multiply-add
---used in polynomial evaluation
-local C = terralib.includec("math.h")
 
 --`Polynomial` strcut type templated by the element type `T`, equal to `float` or `double`, and the
 --polynomial order `N`
@@ -18,27 +14,28 @@ local Polynomial = terralib.memoize(function(T, N)
     assert(T == float or T == double, "CompileError: expected a 'float' or 'double' type.")
     assert(type(N) == "number" and N>0 and N%1==0, "CompileError: expected a positive integer.")
 
-    --typedef fused-multiply-add function from math.h library
-    --local axpy = macro(function(a,x,b) return `a*x+b end)
-    local axpy = terralib.intrinsic(T == float and "llvm.fma.f32" or "llvm.fma.f64", {T, T, T} -> T)
-
     --define struct type
     local struct poly{
         coeffs : T[N]
     }
 
-    --polynomial evaluation using Horner's method. Note the loop-unrolling
+    --polyeval_start
+    -- Intrinsic for fused-multiply-add (axpy form: x*y + z)
+    local axpy = terralib.intrinsic(T == float and "llvm.fma.f32" or "llvm.fma.f64", {T, T, T} -> T)
+
+    --Polynomial evaluation using Horner's method. Here the loop is unrolled at compile-time
     terra poly:eval(x : T)
-        var y = self.coeffs[N-1]
+        var y = self.coeffs[N-1] -- Start with highest coefficient
         escape
             for i=N-2,0,-1 do
                 emit quote
-                    y = axpy(x, y, self.coeffs[i])
+                    y = axpy(x, y, self.coeffs[i]) -- Fused: x * y + coeffs[i]
                 end
             end
         end
         return y
     end
+    --polyeval_end
 
     --convenience method enabling function-like evaluation of a 'poly' object
     poly.metamethods.__apply = macro(function(self, x)
@@ -47,25 +44,22 @@ local Polynomial = terralib.memoize(function(T, N)
 
     return poly
 end)
---poly_end
 
 --tutorial_start
 import "terratest"
 
-testenv "Static polynomial" do
+testenv "Cubic polynomial with float element type" do
 
-    for _,T in pairs{float,double} do
-
-        local poly = Polynomial(T, 4)
-        poly.methods.eval:disas()
-        testset(T) "polynomial evaluation using Horner's method" do
-            terracode
-                var p = poly{arrayof(T,-1.,2.,-6.,2.)}
-            end
-            test p(3)==5
-        end
-
+    local poly = Polynomial(float, 4)
+    terracode
+        var p = poly{arrayof(float,-1.,2.,-6.,2.)}
     end
+    test p(3)==5
 
 end
 --tutorial_end
+
+
+--typedef fused-multiply-add function from math.h library
+--local axpy = macro(function(a,x,b) return `a*x+b end)
+--local axpy = terralib.intrinsic(T == float and "llvm.fma.f32" or "llvm.fma.f64", {T, T, T} -> T)

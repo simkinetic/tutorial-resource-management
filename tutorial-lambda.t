@@ -5,48 +5,22 @@
 --
 -- SPDX-License-Identifier: MIT
 
---lua function that generates a terra type that are function objects. these wrap
---a function in the 'apply' metamethod and store any captured variables in the struct
---as entries
+--tutorial_lambda_start
+local lambda = require("liblambda")
 
---lambda_new_start
-local ckecklambdaexpr = function(expr)
-    if not (expr.tree and expr.tree.type and expr.tree.type:isstruct()) then
-        error("Not a valid capture. " ..
-              "The capture syntax uses named arguments as follows: " ..
-              "{x = xvalue, ...}.", 2)
-    end
+terra example1(y : int)
+    var p = lambda.new([terra(x : int, y : int) return 2*x + y end], {y = y})
+    return p(3)
 end
+print("value returned by lambda is: " .. tostring(example1(2)))
 
-local makelambda = function(fun, lambdaobj)
-    --check capture object
-    ckecklambdaexpr(lambdaobj)
-    local lambdatype = lambdaobj:gettype()
-    --overloading the call operator - making 'lambdaobj' a function object
-    lambdatype.metamethods.__apply = macro(terralib.memoize(function(self, ...)
-        local args = terralib.newlist{...}
-        return `fun([args], unpackstruct(self))
-    end))
-    --add returntype and parameter info if available
-    local funtype = fun:gettype()
-    if funtype:ispointertofunction() then
-        lambdatype.returntype = funtype.type.returntype
-        local nargs = #funtype.type.parameters - #lambdatype.entries
-        lambdatype.parameters = funtype.type.parameters:filteri(function(i,v) return i <= nargs end)
-    end
-    return lambdaobj
-end 
 
---return a function object with captured variables in ...
-local new = macro(function(fun, capture)
-    local lambda = makelambda(fun, capture or quote var c : terralib.types.newstruct() in c end)
-    return `lambda
-end)
---lambda_new_end
+terra add(a : double, b : double) : double return a + b end
 
---lambda_export_start
-return {
-    new = new,
-    makelambda = makelambda
-}
---lambda_export_end
+terra example2(v : int)
+    var captured = {value = 5.0}
+    var p = lambda.new(add, captured)  -- Lambda capturing 'value' as first arg
+    return p(v)
+end
+print("value returned by lambda is: " .. tostring(example2(3.0)))
+--tutorial_lambda_end
